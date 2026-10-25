@@ -61,7 +61,7 @@ def read_rows(path):
 
 
 def load_uploaders():
-    """Freesound ID -> uploader name, for every FSD50K clip"""
+    """Load uploader information for every FSD50K clip"""
     info = {**read_json(FSD_META / "dev_clips_info_FSD50K.json"), **read_json(FSD_META / "eval_clips_info_FSD50K.json")}
     return {freesound_id: d["uploader"] for freesound_id, d in info.items()}
 
@@ -82,7 +82,7 @@ def audio_info(path):
 
 
 def load_esc50(uploader, rng):
-    """ESC-50 clips of the target categories, and the Freesound IDs of their recordings"""
+    """Load ESC-50 clips of the target categories, and the Freesound IDs of their recordings"""
     clips, sources = [], set()
     for r in read_rows(ESC_DIR / "meta" / "esc50.csv"):
         if r["category"] not in ESC_MAP:
@@ -98,7 +98,7 @@ def load_esc50(uploader, rng):
 
 
 def find_rule(labels):
-    """The first rule of FSD_RULES whose label the clip has, or None"""
+    """Finds the first rule of FSD_RULES whose label the clip has, or None"""
     for rule in FSD_RULES:
         if rule[0] in labels:
             return rule
@@ -106,7 +106,7 @@ def find_rule(labels):
 
 
 def load_fsd50k(uploader, skip_ids, rng):
-    """FSD50K clips of the target labels, and how many were skipped as duplicates"""
+    """Load FSD50K clips of the target labels, and how many were skipped as duplicates"""
     with open(FSD_GT / "vocabulary.csv", newline="", encoding="utf-8") as f:
         label_to_mid = {label: mid for _, label, mid in csv.reader(f)}
     ratings = read_json(FSD_META / "pp_pnp_ratings_FSD50K.json")
@@ -143,7 +143,7 @@ def ranked(candidates):
 
 
 def select(candidates):
-    """Take the best-ranked clips of each (class, subclass) skipping unreadable or silent ones"""
+    """Select the best-ranked clips of each (class, subclass) skipping unreadable or silent ones"""
     candidates_by_key = defaultdict(list)
     for c in candidates:
         candidates_by_key[c.cls, c.subclass].append(c)
@@ -172,7 +172,7 @@ def select(candidates):
 
 
 def most_needed_split(count, total):
-    """The split that is furthest below its target size"""
+    """Find the split that is furthest below its target size"""
     return max(SPLITS, key=lambda s: SPLITS[s] * total - count[s])
 
 
