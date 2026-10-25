@@ -32,3 +32,7 @@ The split is 70/15/15 for train, validation and test (112/24/24 clips per class)
 | Duplicate recordings | 94 FSD50K clips come from the same recording as an ESC-50 clip. | Keep the ESC-50 copy and drop the FSD50K clip |
 | Silent clips | 4 clips were silent (3 'alarm', 1 'siren'). | Drop clips with a peak below 1 % of full scale and take the next best clip |
 | Mixed 'alarm' class | In a listening test of 8 'alarm' clips, only 5 were typical alarms. Many 'Alarm' clips in FSD50K seem to be sound effects, not real recordings | Keep the class in version 1, and change in future ones |
+
+## Spectrograms (25.10.26)
+
+Each clip becomes one log-Mel spectrogram of the 2 loudest seconds (64 bands x 201 frames), with the same settings as PANNs Cnn14: 32 kHz, window of 1024 samples, hop of 320, 64 bands, 50 Hz to 14 kHz.
