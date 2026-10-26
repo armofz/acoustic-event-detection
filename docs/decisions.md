@@ -36,3 +36,8 @@ The split is 70/15/15 for train, validation and test (112/24/24 clips per class)
 ## Spectrograms (25.10.26)
 
 Each clip becomes one log-Mel spectrogram of the 2 loudest seconds (64 bands x 201 frames), with the same settings as PANNs Cnn14: 32 kHz, window of 1024 samples, hop of 320, 64 bands, 50 Hz to 14 kHz.
+
+
+### Window length comparison (26.10.26)
+
+Three log-Mel variants are generated with a window of 512, 1024 (PANNs setting) and 2048 samples (16, 32 and 64 ms at 32 kHz), built by 'src/make_logmel.py --n-fft'. The hop (320 samples), the 64 bands and the 50 Hz to 14 kHz range stay fixed, so any difference comes from the window length alone. All variants use the same 2 s segment of each clip.

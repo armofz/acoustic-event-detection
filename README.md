@@ -33,11 +33,29 @@ Each dataset has its own license.
 From the repo root:
 
 ```bash
-python src/build_dataset_v1.py   # writes data/splits/manifest_v1.csv
-python src/make_logmel.py        # writes data/processed/logmel_v1.npz
+# Writes data/splits/manifest_v1.csv
+python src/build_dataset_v1.py
+
+# Writes data/processed/logmel_win<n_fft>_v1.npz
+# --n-fft: window length in samples: 512, 1024 or 2048 (default: 1024)
+python src/make_logmel.py --n-fft 1024
+
+# Trains the CNN and logs the run in MLflow
+# --manifest: list of clips and splits (default: data/splits/manifest_v1.csv)
+# --features: spectrograms file (default: data/processed/logmel_win1024_v1.npz)
+# --seed: random seed (default: 666)
+python src/train_cnn.py --manifest data/splits/manifest_v1.csv --features data/processed/logmel_win1024_v1.npz --seed 666
 ```
 
-`data/processed/` is not versioned: it can be rebuilt with the commands above.
+To see the runs:
+
+```bash
+mlflow ui --backend-store-uri sqlite:///mlflow.db
+```
+
+and then open http://127.0.0.1:5000 in the browser.
+
+`data/processed/`, `models/` and `mlflow.db` are not versioned: they can be rebuilt with the commands above.
 
 ## Docs
 
