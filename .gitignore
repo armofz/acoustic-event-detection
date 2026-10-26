@@ -11,6 +11,13 @@ venv/
 .vscode/
 .ipynb_checkpoints/
 
-# Folders
+# Data folders
 data/raw
 data/processed
+
+# MLflow
+mlflow.db
+mlruns/
+
+# Models
+models/
