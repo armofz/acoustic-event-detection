@@ -1,8 +1,8 @@
 """Train a classifier and log the run in MLflow: the CNN from scratch on the log-Mel spectrograms,
 or a linear layer on the PANNs Cnn14 embeddings (Cnn14 frozen).
 The test split is not used here: it is kept for the final evaluation.
-Run from the repo root: python src/train_cnn.py --seed 1 (see --help for more options)
-PANNs: python src/train_cnn.py --model linear --features data/processed/panns_cnn14_v1.npz
+Run from the repo root: python src/train.py --seed 1 (see --help for more options)
+PANNs: python src/train.py --model linear --features data/processed/panns_cnn14_v1.npz
 To see the runs: mlflow ui --backend-store-uri sqlite:///mlflow.db   (then open http://127.0.0.1:5000)
 """
 import argparse
