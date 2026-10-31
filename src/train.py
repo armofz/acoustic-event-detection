@@ -1,6 +1,8 @@
-"""Train the CNN from scratch on the log-Mel spectrograms and log the run in MLflow.
+"""Train a classifier and log the run in MLflow: the CNN from scratch on the log-Mel spectrograms,
+or a linear layer on the PANNs Cnn14 embeddings (Cnn14 frozen).
 The test split is not used here: it is kept for the final evaluation.
 Run from the repo root: python src/train_cnn.py --seed 1 (see --help for more options)
+PANNs: python src/train_cnn.py --model linear --features data/processed/panns_cnn14_v1.npz
 To see the runs: mlflow ui --backend-store-uri sqlite:///mlflow.db   (then open http://127.0.0.1:5000)
 """
 import argparse
@@ -22,11 +24,13 @@ BATCH_SIZE = 32
 LEARNING_RATE = 1e-3
 MAX_EPOCHS = 60
 PATIENCE = 10
+EXPERIMENTS = {"cnn": "cnn_baseline", "linear": "panns_frozen"}
 
 
 def parse_args():
-    """Read the manifest, the features file and the seed from the command line."""
+    """Read the model, the manifest, the features file and the seed from the command line."""
     parser = argparse.ArgumentParser()
+    parser.add_argument("--model", choices=EXPERIMENTS, default="cnn", help="cnn for log-Mel spectrograms, linear for PANNs embeddings")
     parser.add_argument("--manifest", type=Path, default=Path("data/splits/manifest_v1.csv"))
     parser.add_argument("--features", type=Path, default=Path("data/processed/logmel_win1024_v1.npz"))
     parser.add_argument("--seed", type=int, default=666)
@@ -65,6 +69,12 @@ def make_cnn(n_classes):
     )
 
 
+def make_linear(n_inputs, n_classes):
+    """Make a single linear layer for the PANNs embeddings"""
+    # Flatten removes the channel dimension that train_one_epoch and predict add for the CNN
+    return nn.Sequential(nn.Flatten(), nn.Linear(n_inputs, n_classes))
+
+
 def predict(model, X):
     """Return the model scores for every clip, in evaluation mode (no dropout)."""
     model.eval()
@@ -95,8 +105,9 @@ def confusion_matrix_figure(y_true, y_pred, classes):
 def main():
     args = parse_args()
     manifest, features, seed = args.manifest, args.features, args.seed
-    # One model file per features file and seed, so runs do not overwrite each other
-    model_file = Path("models") / f"cnn_{features.stem}_seed{seed}.pt"
+    # One model file per model, features file and seed, so runs do not overwrite each other
+    run_name = f"{args.model}_{features.stem}_seed{seed}"
+    model_file = Path("models") / f"{run_name}.pt"
     torch.manual_seed(seed)
 
     # Load data and split into train and validation
@@ -107,15 +118,15 @@ def main():
     # Create the model, optimizer, loss function and data loader for training
     train_loader = DataLoader(TensorDataset(torch.from_numpy(X_train), torch.from_numpy(y_train)), batch_size=BATCH_SIZE,
                               shuffle=True, generator=torch.Generator().manual_seed(seed))
-    model = make_cnn(len(classes))
+    model = make_cnn(len(classes)) if args.model == "cnn" else make_linear(X.shape[1], len(classes))
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
     loss_fn = nn.CrossEntropyLoss()
 
     # Start an MLflow run (all runs go to a local file)
     mlflow.set_tracking_uri("sqlite:///mlflow.db")
-    mlflow.set_experiment("cnn_baseline")
-    with mlflow.start_run(run_name=f"cnn_{features.stem}_seed{seed}"):
-        mlflow.log_params({"features": features.name, "manifest": manifest.name, "seed": seed, "batch_size": BATCH_SIZE, "learning_rate": LEARNING_RATE,
+    mlflow.set_experiment(EXPERIMENTS[args.model])
+    with mlflow.start_run(run_name=run_name):
+        mlflow.log_params({"model": args.model, "features": features.name, "manifest": manifest.name, "seed": seed, "batch_size": BATCH_SIZE, "learning_rate": LEARNING_RATE,
                            "max_epochs": MAX_EPOCHS, "patience": PATIENCE, "n_train": len(y_train), "n_val": len(y_val),
                            "n_params": sum(p.numel() for p in model.parameters())})
         train_dataset = mlflow.data.from_numpy(X_train, targets=y_train, name=features.stem)

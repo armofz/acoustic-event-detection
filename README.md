@@ -40,11 +40,17 @@ python src/build_dataset_v1.py
 # --n-fft: window length in samples: 512, 1024 or 2048 (default: 1024)
 python src/make_logmel.py --n-fft 1024
 
-# Trains the CNN and logs the run in MLflow
+# Writes data/processed/panns_cnn14_v1.npz
+# Computes a PANNs Cnn14 embedding (2048 values) for every clip. Cnn14 is used frozen
+python src/extract_panns.py
+
+# Trains a classifier and logs the run in MLflow
+# --model: CNN from scratch on log-Mel or linear layer on the PANNs embeddings (default: cnn)
 # --manifest: list of clips and splits (default: data/splits/manifest_v1.csv)
-# --features: spectrograms file (default: data/processed/logmel_win1024_v1.npz)
+# --features: spectrograms or embeddings file (default: data/processed/logmel_win1024_v1.npz)
 # --seed: random seed (default: 666)
-python src/train_cnn.py --manifest data/splits/manifest_v1.csv --features data/processed/logmel_win1024_v1.npz --seed 666
+python src/train.py --model cnn --manifest data/splits/manifest_v1.csv --features data/processed/logmel_win1024_v1.npz --seed 666
+python src/train.py --model linear --manifest data/splits/manifest_v1.csv --features data/processed/panns_cnn14_v1.npz --seed 666
 ```
 
 To see the runs:
