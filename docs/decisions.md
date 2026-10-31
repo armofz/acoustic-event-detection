@@ -41,3 +41,20 @@ Each clip becomes one log-Mel spectrogram of the 2 loudest seconds (64 bands x 2
 ### Window length comparison (26.10.26)
 
 Three log-Mel variants are generated with a window of 512, 1024 (PANNs setting) and 2048 samples (16, 32 and 64 ms at 32 kHz), built by 'src/make_logmel.py --n-fft'. The hop (320 samples), the 64 bands and the 50 Hz to 14 kHz range stay fixed, so any difference comes from the window length alone. All variants use the same 2 s segment of each clip.
+
+
+### Representation and model comparison (31.10.26)
+
+A constant-Q transform (CQT) is built by 'src/make_cqt.py' to compare it with the log-Mel: 64 bins, 8 per octave from 50 Hz, with the same hop (320) and 2 s segment as the log-Mel, so every representation has the same size (64 x 201). It reaches 11.7 kHz and not 14 kHz, with the usual 12 bins per octave it would only reach 1.9 kHz.
+
+Every model is trained with seeds 1, 2 and 3 and compared by the mean macro F1 on validation (120 clips). The CNN with seed 666 got 0.751, but seeds 1 to 3 got 0.664 to 0.728, so a single seed is never enough. The test split is kept for the final evaluation.
+
+| Model | Input | Seed 1 | Seed 2 | Seed 3 | Mean |
+| --- | --- | --- | --- | --- | --- |
+| CNN from scratch | log-Mel, window 512 | 0.713 | 0.702 | 0.731 | 0.715 |
+| CNN from scratch | log-Mel, window 1024 | 0.704 | 0.664 | 0.728 | 0.699 |
+| CNN from scratch | log-Mel, window 2048 | 0.700 | 0.706 | 0.692 | 0.699 |
+| CNN from scratch | CQT | 0.707 | 0.620 | 0.701 | 0.676 |
+| Frozen Cnn14 + linear layer | PANNs embeddings | 0.866 | 0.858 | 0.867 | 0.864 |
+
+The difference between the representations (means from 0.676 to 0.715) is smaller than the variation between seeds of the same representation, so there is no clear winner. The log-Mel with window 1024 is kept as the input because it is the PANNs setting. Regarding the model, the frozen Cnn14 improves the CNN by 0.165 and varies much less between seeds.
