@@ -40,6 +40,10 @@ python src/build_dataset_v1.py
 # --n-fft: window length in samples: 512, 1024 or 2048 (default: 1024)
 python src/make_logmel.py --n-fft 1024
 
+# Writes data/processed/cqt_v1.npz
+# Computes a constant-Q transform (CQT) for every clip, to compare it with the log-Mel
+python src/make_cqt.py
+
 # Writes data/processed/panns_cnn14_v1.npz
 # Computes a PANNs Cnn14 embedding (2048 values) for every clip. Cnn14 is used frozen
 python src/extract_panns.py
