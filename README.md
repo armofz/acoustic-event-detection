@@ -18,6 +18,8 @@ pip install -r requirements-cpu.txt
 
 This installs the CPU version of PyTorch, which works on any computer.
 
+
+
 ## Data
 
 The audio is not in the repo. Download it into `data/raw/`:
@@ -48,13 +50,21 @@ python src/make_cqt.py
 # Computes a PANNs Cnn14 embedding (2048 values) for every clip. Cnn14 is used frozen
 python src/extract_panns.py
 
+# Writes data/processed/waveform_v1.npz
+# Saves the 2 s waveform of every clip, the input for fine-tuning PANNs
+python src/make_waveforms.py
+
 # Trains a classifier and logs the run in MLflow
-# --model: CNN from scratch on log-Mel or linear layer on the PANNs embeddings (default: cnn)
+# --model: CNN from scratch on log-Mel, linear layer on the PANNs embeddings, or fine-tuning cnn14 or mobilenetv1 of PANNs on the waveforms (default: cnn)
 # --manifest: list of clips and splits (default: data/splits/manifest_v1.csv)
-# --features: spectrograms or embeddings file (default: data/processed/logmel_win1024_v1.npz)
+# --features: spectrograms, embeddings or waveforms file (default: data/processed/logmel_win1024_v1.npz)
 # --seed: random seed (default: 666)
+# --learning-rate: learning rate (default: 1e-3, use 1e-4 for fine-tuning)
+# --batch-size: clips per batch (default: 32, lower it if the GPU runs out of memory)
 python src/train.py --model cnn --manifest data/splits/manifest_v1.csv --features data/processed/logmel_win1024_v1.npz --seed 666
 python src/train.py --model linear --manifest data/splits/manifest_v1.csv --features data/processed/panns_cnn14_v1.npz --seed 666
+python src/train.py --model mobilenetv1 --manifest data/splits/manifest_v1.csv --features data/processed/waveform_v1.npz --seed 666 --learning-rate 1e-4 --batch-size 16
+python src/train.py --model cnn14 --manifest data/splits/manifest_v1.csv --features data/processed/waveform_v1.npz --seed 666 --learning-rate 1e-4 --batch-size 16
 ```
 
 To see the runs:
@@ -70,3 +80,5 @@ and then open http://127.0.0.1:5000 in the browser.
 ## Docs
 
 Design decisions are in `docs/decisions.md`.
+
+`src/panns_models.py` is adapted from [audioset_tagging_cnn](https://github.com/qiuqiangkong/audioset_tagging_cnn) (MIT). See `THIRD_PARTY_LICENSES.md`.
