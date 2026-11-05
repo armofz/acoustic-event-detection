@@ -1,15 +1,13 @@
 """Train a classifier and log the run in MLflow: the CNN from scratch on the log-Mel spectrograms,
-or a linear layer on the PANNs Cnn14 embeddings (Cnn14 frozen).
+a linear layer on the PANNs Cnn14 embeddings (Cnn14 frozen), a fine-tune Cnn14 or MobileNetV1 on the waveforms.
 The test split is not used here: it is kept for the final evaluation.
 Run from the repo root: python src/train.py --seed 1 (see --help for more options)
 PANNs: python src/train.py --model linear --features data/processed/panns_cnn14_v1.npz
 To see the runs: mlflow ui --backend-store-uri sqlite:///mlflow.db   (then open http://127.0.0.1:5000)
 """
 import argparse
-import copy
 import csv
 from pathlib import Path
-
 import matplotlib.pyplot as plt
 import mlflow
 import numpy as np
@@ -17,6 +15,7 @@ import torch
 from sklearn.metrics import ConfusionMatrixDisplay, accuracy_score, classification_report, f1_score
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
+from panns_models import PannsClassifier
 
 
 # Constants for training
@@ -24,35 +23,39 @@ BATCH_SIZE = 32
 LEARNING_RATE = 1e-3
 MAX_EPOCHS = 60
 PATIENCE = 10
-EXPERIMENTS = {"cnn": "cnn_baseline", "linear": "panns_frozen"}
+EXPERIMENTS = {"cnn": "cnn_baseline", "linear": "panns_frozen", "cnn14": "panns_finetuned", "mobilenetv1": "panns_finetuned"}
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 def parse_args():
-    """Read the model, the manifest, the features file and the seed from the command line."""
+    """Read the model, the manifest, the features file and the seed from the command line"""
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", choices=EXPERIMENTS, default="cnn", help="cnn for log-Mel spectrograms, linear for PANNs embeddings")
+    parser.add_argument("--model", choices=EXPERIMENTS, default="cnn",
+                        help="cnn for log-Mel spectrograms, linear for PANNs embeddings, cnn14 or mobilenetv1 for waveforms")
     parser.add_argument("--manifest", type=Path, default=Path("data/splits/manifest_v1.csv"))
     parser.add_argument("--features", type=Path, default=Path("data/processed/logmel_win1024_v1.npz"))
     parser.add_argument("--seed", type=int, default=666)
+    parser.add_argument("--learning-rate", type=float, default=LEARNING_RATE, help="use 1e-4 for fine-tuning")
+    parser.add_argument("--batch-size", type=int, default=BATCH_SIZE, help="lower it if the GPU runs out of memory")
     return parser.parse_args()
 
 
 def load_data(manifest, features):
-    """Load and normalize spectrograms, integer labels, class names and split of every clip."""
+    """Load and normalize spectrograms, integer labels, class names and split of every clip"""
     with open(manifest, newline="", encoding="utf-8") as f:
         rows = {row["clip_id"]: row for row in csv.DictReader(f)}
     data = np.load(features)
     rows = [rows[clip_id] for clip_id in data["clip_id"]]  # same order as the spectrograms
 
     classes = sorted({row["class"] for row in rows})
-    X = (data["X"] - data["mean"]) / data["std"]
+    X = (data["X"] - float(data["mean"])) / float(data["std"])
     y = np.array([classes.index(row["class"]) for row in rows])
     splits = np.array([row["split"] for row in rows])
     return X.astype(np.float32), y, classes, splits
 
 
 def make_cnn(n_classes):
-    """Make a CNN with three conv blocks (3x3 filters) and a linear classifier."""
+    """Make a CNN with three conv blocks (3x3 filters) and a linear classifier"""
     def block(in_channels, out_channels):
         return nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
@@ -75,17 +78,27 @@ def make_linear(n_inputs, n_classes):
     return nn.Sequential(nn.Flatten(), nn.Linear(n_inputs, n_classes))
 
 
+def make_model(name, n_inputs, n_classes):
+    if name == "cnn":
+        return make_cnn(n_classes)
+    if name == "linear":
+        return make_linear(n_inputs, n_classes)
+    return PannsClassifier(name, n_classes)    # cnn14 or mobilenetv1, starting from the AudioSet weights
+
+
 def predict(model, X):
-    """Return the model scores for every clip, in evaluation mode (no dropout)."""
+    """Return the model scores for every clip in batches, in evaluation mode"""
     model.eval()
     with torch.no_grad():
-        return model(torch.from_numpy(X).unsqueeze(1))
+        scores = [model(X_batch.unsqueeze(1).to(DEVICE)).cpu() for X_batch in torch.from_numpy(X).split(BATCH_SIZE)]
+    return torch.cat(scores)
 
 
 def train_one_epoch(model, loader, optimizer, loss_fn):
     model.train()
     total_loss = 0.0
     for X_batch, y_batch in loader:
+        X_batch, y_batch = X_batch.to(DEVICE), y_batch.to(DEVICE)
         optimizer.zero_grad()
         loss = loss_fn(model(X_batch.unsqueeze(1)), y_batch)
         loss.backward()
@@ -105,6 +118,7 @@ def confusion_matrix_figure(y_true, y_pred, classes):
 def main():
     args = parse_args()
     manifest, features, seed = args.manifest, args.features, args.seed
+    learning_rate, batch_size = args.learning_rate, args.batch_size
     # One model file per model, features file and seed, so runs do not overwrite each other
     run_name = f"{args.model}_{features.stem}_seed{seed}"
     model_file = Path("models") / f"{run_name}.pt"
@@ -116,17 +130,17 @@ def main():
     X_val, y_val = X[splits == "val"], y[splits == "val"]
 
     # Create the model, optimizer, loss function and data loader for training
-    train_loader = DataLoader(TensorDataset(torch.from_numpy(X_train), torch.from_numpy(y_train)), batch_size=BATCH_SIZE,
-                              shuffle=True, generator=torch.Generator().manual_seed(seed))
-    model = make_cnn(len(classes)) if args.model == "cnn" else make_linear(X.shape[1], len(classes))
-    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    train_loader = DataLoader(TensorDataset(torch.from_numpy(X_train), torch.from_numpy(y_train)), 
+                              batch_size=batch_size, shuffle=True, generator=torch.Generator().manual_seed(seed))
+    model = make_model(args.model, X.shape[1], len(classes)).to(DEVICE)
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     loss_fn = nn.CrossEntropyLoss()
 
     # Start an MLflow run (all runs go to a local file)
     mlflow.set_tracking_uri("sqlite:///mlflow.db")
     mlflow.set_experiment(EXPERIMENTS[args.model])
     with mlflow.start_run(run_name=run_name):
-        mlflow.log_params({"model": args.model, "features": features.name, "manifest": manifest.name, "seed": seed, "batch_size": BATCH_SIZE, "learning_rate": LEARNING_RATE,
+        mlflow.log_params({"model": args.model, "features": features.name, "manifest": manifest.name, "seed": seed, "batch_size": batch_size, "learning_rate": learning_rate, "device": DEVICE,
                            "max_epochs": MAX_EPOCHS, "patience": PATIENCE, "n_train": len(y_train), "n_val": len(y_val),
                            "n_params": sum(p.numel() for p in model.parameters())})
         train_dataset = mlflow.data.from_numpy(X_train, targets=y_train, name=features.stem)
@@ -149,9 +163,10 @@ def main():
                                 "val_f1_macro": val_f1}, step=epoch)
             print(f"epoch {epoch:2d}  train_loss {train_loss:.3f}  val_loss {val_loss:.3f}  val_f1 {val_f1:.3f}")
 
-            # Keep the best model, not the last one
+            # Keep the best model, not the last one. The copy goes to the CPU
             if val_f1 > best_f1:
-                best_f1, best_epoch, best_state = val_f1, epoch, copy.deepcopy(model.state_dict())
+                best_state = {name: value.cpu().clone() for name, value in model.state_dict().items()}
+                best_f1, best_epoch = val_f1, epoch
             elif epoch - best_epoch >= PATIENCE:
                 print(f"Early stopping: no improvement since epoch {best_epoch}")
                 break
