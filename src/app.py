@@ -58,8 +58,10 @@ async def websocket(page: WebSocket):
     try:
         while True:
             command = json.loads(await page.receive_text())
-            await asyncio.to_thread(detector.handle, command)    # in a thread: loading a model takes a few seconds
-    except WebSocketDisconnect:
+            await asyncio.to_thread(detector.handle, command)    # in a thread, loading a model takes a few seconds
+    except (WebSocketDisconnect, RuntimeError):
+        pass
+    finally:
         pages.discard(page)
 
 
