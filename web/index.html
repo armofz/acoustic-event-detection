@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sound alerts</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Computer or tablet -->
+  <main id="app">
+    <header>
+      <h1>Sound alerts</h1>
+      <button id="listen" class="listen">Start listening</button>
+    </header>
+    <p class="privacy">The sound is processed on this computer and is never saved. Only the detected events, the sound level and a low-resolution spectrogram are shared with the devices that open this page.</p>
+    <section class="live card">
+      <h2>What it hears</h2>
+      <canvas id="spectrogram" width="600" height="128"></canvas>
+      <div class="level"><span>Level</span><div class="bar"><div id="level"></div></div><span id="level-db">-- dB</span></div>
+      <div id="probabilities"></div>
+    </section>
+
+    <section class="alerts card">
+      <h2>Last alert</h2>
+      <div class="band"><div class="band-screen" id="band-screen"><span class="icon">🔕</span><span class="name">Nothing yet</span></div></div>
+      <ol id="history"></ol>
+    </section>
+
+    <section class="settings card">
+      <h2>Settings</h2>
+      <label>Model <select id="model"><option value="">Choose a model…</option></select></label>
+      <label>Alert from <input id="threshold" type="range" min="0.3" max="0.95" step="0.05"> <span id="threshold-value"></span> confidence</label>
+      <label class="check"><input id="vibrate" type="checkbox"> Vibrate this device too</label>
+      <h3>Events to alert and their vibration</h3>
+      <ul id="events"></ul>
+      <p class="hint">Simulate plays a test clip (never seen by the model) as if it sounded now. Open <b>/?view=band</b> on a phone to use it as the wristband.</p>
+    </section>
+  </main>
+
+  <!-- Wristband view: phone or watch -->
+  <main id="band-view" hidden>
+    <div class="band big"><div class="band-screen" id="band-screen-big"><span class="icon">🔕</span><span class="name">Waiting…</span></div></div>
+    <button id="enable-vibration" class="listen">Tap to allow vibration</button>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
