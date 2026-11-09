@@ -81,13 +81,13 @@ def audio_info(path):
     return n_frames / sr, peak
 
 
-def load_esc50(uploader, rng):
-    """Load ESC-50 clips of the target categories, and the Freesound IDs of their recordings"""
+def load_esc50(uploader, rng, esc_map):
+    """Load ESC-50 clips of the categories in esc_map, and the Freesound IDs of their recordings"""
     clips, sources = [], set()
     for r in read_rows(ESC_DIR / "meta" / "esc50.csv"):
-        if r["category"] not in ESC_MAP:
+        if r["category"] not in esc_map:
             continue
-        cls, subclass = ESC_MAP[r["category"]]
+        cls, subclass = esc_map[r["category"]]
         src = r["src_file"]     # Freesound ID of the original recording
         sources.add(src)
         group = f"u:{uploader[src]}" if src in uploader else f"e:{src}"
@@ -97,16 +97,17 @@ def load_esc50(uploader, rng):
     return clips, sources
 
 
-def find_rule(labels):
-    """Finds the first rule of FSD_RULES whose label the clip has, or None"""
-    for rule in FSD_RULES:
-        if rule[0] in labels:
+def find_rule(labels, rules, excluded_labels, alert_classes):
+    """Finds the first rule whose label the clip has, or None. Clips with an excluded label only go to alert classes"""
+    excluded = not excluded_labels.isdisjoint(labels)
+    for rule in rules:
+        if rule[0] in labels and (rule[1] in alert_classes or not excluded):
             return rule
     return None
 
 
-def load_fsd50k(uploader, skip_ids, rng):
-    """Load FSD50K clips of the target labels, and how many were skipped as duplicates"""
+def load_fsd50k(uploader, skip_ids, rng, rules, excluded_labels=frozenset(), alert_classes=frozenset()):
+    """Load FSD50K clips of the labels in rules, and how many were skipped as duplicates"""
     with open(FSD_GT / "vocabulary.csv", newline="", encoding="utf-8") as f:
         label_to_mid = {label: mid for _, label, mid in csv.reader(f)}
     ratings = read_json(FSD_META / "pp_pnp_ratings_FSD50K.json")
@@ -116,7 +117,7 @@ def load_fsd50k(uploader, skip_ids, rng):
         audio_dir = RAW_DIR / "FSD50K" / f"FSD50K.{part}_audio"
         for r in read_rows(FSD_GT / f"{part}.csv"):
             labels = r["labels"].split(",")
-            rule = find_rule(labels)
+            rule = find_rule(labels, rules, excluded_labels, alert_classes)
             if rule is None:
                 continue
             freesound_id = r["fname"]
@@ -142,7 +143,7 @@ def ranked(candidates):
     return esc + fsd
 
 
-def select(candidates):
+def select(candidates, clips_per_class):
     """Select the best-ranked clips of each (class, subclass) skipping unreadable or silent ones"""
     candidates_by_key = defaultdict(list)
     for c in candidates:
@@ -150,7 +151,7 @@ def select(candidates):
 
     selected = []
     dropped = {"silent": Counter(), "unreadable": Counter()}
-    for (cls, subclass), quota in CLIPS_PER_CLASS.items():
+    for (cls, subclass), quota in clips_per_class.items():
         picked = []
         for c in ranked(candidates_by_key[cls, subclass]):
             if len(picked) == quota:
@@ -199,9 +200,9 @@ def assign_splits(clips, rng):
                 c.split = split
 
 
-def write_manifest(clips):
-    OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(OUT_FILE, "w", newline="", encoding="utf-8") as f:
+def write_manifest(clips, out_file):
+    out_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_file, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["clip_id", "source", "path", "class", "subclass", "group_id", "split", "duration_s", "peak", "rating"])
         for c in sorted(clips, key=lambda c: (c.cls, c.split, c.clip_id)):
@@ -209,30 +210,30 @@ def write_manifest(clips):
                         "" if c.rating is None else c.rating])
 
 
-def print_summary(clips, duplicates, dropped):
+def print_summary(clips, duplicates, dropped, out_file):
     table = Counter((c.cls, c.split) for c in clips)
-    print(f"\n{'class':18}" + "".join(f"{s:>7}" for s in SPLITS) + f"{'total':>7}")
+    print(f"\n{'class':20}" + "".join(f"{s:>7}" for s in SPLITS) + f"{'total':>7}")
     for cls in sorted({c.cls for c in clips}):
         n = [table[cls, s] for s in SPLITS]
-        print(f"{cls:18}" + "".join(f"{x:>7}" for x in n) + f"{sum(n):>7}")
+        print(f"{cls:20}" + "".join(f"{x:>7}" for x in n) + f"{sum(n):>7}")
     
     print("\nBy source:", dict(Counter(c.source for c in clips)))
     print("Distinct uploader groups:", len({c.group for c in clips}))
     print("FSD50K duplicates dropped (already in ESC-50):", duplicates)
     print("Dropped as silent:", dict(dropped["silent"]))
     print("Unreadable (not 16-bit WAV):", dict(dropped["unreadable"]))
-    print("Written:", OUT_FILE)
+    print("Written:", out_file)
 
 
 def main():
     rng = random.Random(SEED)
     uploader = load_uploaders()
-    esc, skip_ids = load_esc50(uploader, rng)
-    fsd, duplicates = load_fsd50k(uploader, skip_ids, rng)
-    selected, dropped = select(esc + fsd)
+    esc, skip_ids = load_esc50(uploader, rng, ESC_MAP)
+    fsd, duplicates = load_fsd50k(uploader, skip_ids, rng, FSD_RULES)
+    selected, dropped = select(esc + fsd, CLIPS_PER_CLASS)
     assign_splits(selected, rng)
-    write_manifest(selected)
-    print_summary(selected, duplicates, dropped)
+    write_manifest(selected, OUT_FILE)
+    print_summary(selected, duplicates, dropped, OUT_FILE)
 
 
 if __name__ == "__main__":
