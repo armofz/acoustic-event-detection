@@ -17,8 +17,7 @@ pip install -r requirements-cpu.txt
 ```
 
 This installs the CPU version of PyTorch, which works on any computer.
-
-
+On Linux, the microphone needs the PortAudio library (`sudo apt install libportaudio2`).
 
 ## Data
 
@@ -65,7 +64,12 @@ python src/train.py --model cnn --manifest data/splits/manifest_v1.csv --feature
 python src/train.py --model linear --manifest data/splits/manifest_v1.csv --features data/processed/panns_cnn14_v1.npz --seed 666
 python src/train.py --model mobilenetv1 --manifest data/splits/manifest_v1.csv --features data/processed/waveform_v1.npz --seed 666 --learning-rate 1e-4 --batch-size 16
 python src/train.py --model cnn14 --manifest data/splits/manifest_v1.csv --features data/processed/waveform_v1.npz --seed 666 --learning-rate 1e-4 --batch-size 16
+
+# Starts the real-time detector and the web page http://localhost:8000 on the computer
+# On a phone in the same Wi-Fi, open http://<computer's IP>:8000/?view=band to use it as the wristband
+python src/app.py
 ```
+The server listens on all network interfaces and has no authentication, use it only on a trusted network.
 
 To see the runs:
 
