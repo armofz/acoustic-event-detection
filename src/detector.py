@@ -121,6 +121,7 @@ class Detector:
                 if command["event"] not in self.clips:
                     raise ValueError(f"Unknown event: {command['event']}")
                 clip = random.choice(self.clips[command["event"]])
+                self.simulating = True
                 threading.Thread(target=self.play_clip, args=(clip,), daemon=True).start()
                 self.on_message({"type": "simulation", "event": command["event"], "clip_id": clip["clip_id"]})
         except Exception as error:
@@ -143,10 +144,9 @@ class Detector:
 
     def play_clip(self, clip):
         was_listening = self.stream is not None
-        self.stop_mic()
-        self.simulating = True
-        self.reset()
         try:
+            self.stop_mic()
+            self.reset()
             waveform, _ = librosa.load(clip["path"], sr=SAMPLE_RATE)
             silence = np.zeros(SAMPLE_RATE, dtype=np.float32)
             audio = np.concatenate([silence, waveform, silence])
