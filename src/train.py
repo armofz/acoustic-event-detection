@@ -25,6 +25,9 @@ MAX_EPOCHS = 60
 PATIENCE = 10
 EXPERIMENTS = {"cnn": "cnn_baseline", "linear": "panns_frozen", "cnn14": "panns_finetuned", "mobilenetv1": "panns_finetuned"}
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+# Classes that alert by default ('phone' only exists in v1) and classes the user can activate in the app (v2)
+ALERT_CLASSES = {"alarm", "door_knock_bell", "glass_breaking", "phone", "siren"}
+ACTIVABLE_CLASSES = {"crying", "door_slam", "scream_shout"}
 
 
 def parse_args():
@@ -107,6 +110,28 @@ def train_one_epoch(model, loader, optimizer, loss_fn):
     return total_loss / len(loader.dataset)
 
 
+def alert_metrics(y_true, y_pred, classes, selected):
+    """F1 of the selected classes and false alarm rate"""
+    true = [classes[i] if classes[i] in selected else "no_alert" for i in y_true]
+    pred = [classes[i] if classes[i] in selected else "no_alert" for i in y_pred]
+    labels = [c for c in classes if c in selected]
+    f1 = f1_score(true, pred, labels=labels, average="macro")
+    others = [p for t, p in zip(true, pred) if t == "no_alert"]
+    false_alarms = sum(p != "no_alert" for p in others) / len(others) if others else None
+    return f1, false_alarms
+
+
+def app_metrics(y_true, y_pred, classes):
+    """Alert metrics with the default classes and with the activable ones too, ready to log in MLflow"""
+    metrics = {}
+    for name, selected in [("alert", ALERT_CLASSES), ("selectable", ALERT_CLASSES | ACTIVABLE_CLASSES)]:
+        f1, false_alarms = alert_metrics(y_true, y_pred, classes, selected)
+        metrics[f"{name}_f1"] = f1
+        if false_alarms is not None:
+            metrics[f"{name}_false_alarms"] = false_alarms
+    return metrics
+
+
 def confusion_matrix_figure(y_true, y_pred, classes):
     fig, ax = plt.subplots(figsize=(6, 5))
     ConfusionMatrixDisplay.from_predictions(y_true, y_pred, display_labels=classes, xticks_rotation=45, colorbar=False, ax=ax)
@@ -158,10 +183,12 @@ def main():
 
             # Macro: average of the F1 of each class
             val_f1 = f1_score(y_val, val_pred, average="macro")
+            val_app = app_metrics(y_val, val_pred, classes)
             mlflow.log_metrics({"train_loss": train_loss, "val_loss": val_loss,
                                 "val_accuracy": accuracy_score(y_val, val_pred),
-                                "val_f1_macro": val_f1}, step=epoch)
-            print(f"epoch {epoch:2d}  train_loss {train_loss:.3f}  val_loss {val_loss:.3f}  val_f1 {val_f1:.3f}")
+                                "val_f1_macro": val_f1, **{f"val_{k}": v for k, v in val_app.items()}}, step=epoch)
+            print(f"epoch {epoch:2d}  train_loss {train_loss:.3f}  val_loss {val_loss:.3f}  val_f1 {val_f1:.3f}  "
+                  f"alert_f1 {val_app['alert_f1']:.3f}")
 
             # Keep the best model, not the last one. The copy goes to the CPU
             if val_f1 > best_f1:
@@ -175,7 +202,9 @@ def main():
         model.load_state_dict(best_state)
         val_pred = predict(model, X_val).argmax(dim=1).numpy()
         report = classification_report(y_val, val_pred, target_names=classes, digits=3)
+        best_app = app_metrics(y_val, val_pred, classes)
         print(f"\nBest epoch {best_epoch}\n{report}")
+        print("  ".join(f"{k} {v:.3f}" for k, v in best_app.items()))
 
         # Save the model to a file and log the final results in MLflow
         model_file.parent.mkdir(parents=True, exist_ok=True)
@@ -183,7 +212,8 @@ def main():
         fig = confusion_matrix_figure(y_val, val_pred, classes)
         mlflow.log_figure(fig, "confusion_val.png")
         plt.close(fig)
-        mlflow.log_metrics({"best_epoch": best_epoch, "best_val_f1_macro": best_f1, "best_val_accuracy": accuracy_score(y_val, val_pred)})
+        mlflow.log_metrics({"best_epoch": best_epoch, "best_val_f1_macro": best_f1, "best_val_accuracy": accuracy_score(y_val, val_pred),
+                            **{f"best_val_{k}": v for k, v in best_app.items()}})
         mlflow.log_text(report, "classification_report_val.txt")
         mlflow.log_artifact(str(model_file))
 
