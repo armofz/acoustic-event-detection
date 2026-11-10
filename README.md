@@ -2,9 +2,9 @@
 
 Final degree project (UOC, Applied Data Science). The system detects emergency and everyday sounds from log-Mel spectrograms.
 
-**Classes:** alarm, phone, siren, glass breaking, door (knock and doorbell).
+**Classes:** 4 alert classes: alarm, siren, glass breaking, door (knock and doorbell). 3 classes that can be activated: door slam, crying, scream or shout. 10 classes of home sounds that never alert (speech, music, pets...)
 
-**Status:** v1
+**Status:** v2
 
 ## Setup
 
@@ -34,36 +34,40 @@ Each dataset has its own license.
 From the repo root:
 
 ```bash
-# Writes data/splits/manifest_v1.csv
+# Writes data/splits/manifest_v1.csv (5 classes, used for the representation comparison)
 python src/build_dataset_v1.py
+# Writes data/splits/manifest_v2.csv (17 classes)
+python src/build_dataset_v2.py
 
-# Writes data/processed/logmel_win<n_fft>_v1.npz
+# Writes data/processed/logmel_win<n_fft>_<version>.npz
 # --n-fft: window length in samples: 512, 1024 or 2048 (default: 1024)
-python src/make_logmel.py --n-fft 1024
+# --manifest: list of clips and splits (default: data/splits/manifest_v1.csv)
+python src/make_logmel.py --n-fft 1024 --manifest data/splits/manifest_v2.csv
 
-# Writes data/processed/cqt_v1.npz
+# Writes data/processed/cqt_<version>.npz
 # Computes a constant-Q transform (CQT) for every clip, to compare it with the log-Mel
-python src/make_cqt.py
+python src/make_cqt.py --manifest data/splits/manifest_v2.csv
 
-# Writes data/processed/panns_cnn14_v1.npz
+# Writes data/processed/panns_cnn14_<version>.npz
 # Computes a PANNs Cnn14 embedding (2048 values) for every clip. Cnn14 is used frozen
-python src/extract_panns.py
+python src/extract_panns.py --manifest data/splits/manifest_v2.csv
 
-# Writes data/processed/waveform_v1.npz
+# Writes data/processed/waveform_<version>.npz
 # Saves the 2 s waveform of every clip, the input for fine-tuning PANNs
-python src/make_waveforms.py
+python src/make_waveforms.py --manifest data/splits/manifest_v2.csv
 
-# Trains a classifier and logs the run in MLflow
+# Trains a classifier and logs the run in MLflow: macro F1, and the F1 and false alarm rate of the alert classes
+# (alone and with the classes that can be activated), as the app sees them
 # --model: CNN from scratch on log-Mel, linear layer on the PANNs embeddings, or fine-tuning cnn14 or mobilenetv1 of PANNs on the waveforms (default: cnn)
 # --manifest: list of clips and splits (default: data/splits/manifest_v1.csv)
 # --features: spectrograms, embeddings or waveforms file (default: data/processed/logmel_win1024_v1.npz)
 # --seed: random seed (default: 666)
 # --learning-rate: learning rate (default: 1e-3, use 1e-4 for fine-tuning)
 # --batch-size: clips per batch (default: 32, lower it if the GPU runs out of memory)
-python src/train.py --model cnn --manifest data/splits/manifest_v1.csv --features data/processed/logmel_win1024_v1.npz --seed 666
-python src/train.py --model linear --manifest data/splits/manifest_v1.csv --features data/processed/panns_cnn14_v1.npz --seed 666
-python src/train.py --model mobilenetv1 --manifest data/splits/manifest_v1.csv --features data/processed/waveform_v1.npz --seed 666 --learning-rate 1e-4 --batch-size 16
-python src/train.py --model cnn14 --manifest data/splits/manifest_v1.csv --features data/processed/waveform_v1.npz --seed 666 --learning-rate 1e-4 --batch-size 16
+python src/train.py --model cnn --manifest data/splits/manifest_v2.csv --features data/processed/logmel_win1024_v2.npz --seed 666
+python src/train.py --model linear --manifest data/splits/manifest_v2.csv --features data/processed/panns_cnn14_v2.npz --seed 666
+python src/train.py --model mobilenetv1 --manifest data/splits/manifest_v2.csv --features data/processed/waveform_v2.npz --seed 666 --learning-rate 1e-4 --batch-size 16
+python src/train.py --model cnn14 --manifest data/splits/manifest_v2.csv --features data/processed/waveform_v2.npz --seed 666 --learning-rate 1e-4 --batch-size 16
 
 # Starts the real-time detector and the web page http://localhost:8000 on the computer
 # On a phone in the same Wi-Fi, open http://<computer's IP>:8000/?view=band to use it as the wristband
