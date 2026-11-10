@@ -7,6 +7,7 @@ To see the runs: mlflow ui --backend-store-uri sqlite:///mlflow.db   (then open 
 """
 import argparse
 import csv
+import os
 from pathlib import Path
 import matplotlib.pyplot as plt
 import mlflow
@@ -161,11 +162,11 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     loss_fn = nn.CrossEntropyLoss()
 
-    # Start an MLflow run (all runs go to a local file)
-    mlflow.set_tracking_uri("sqlite:///mlflow.db")
+    # Start an MLflow run (all runs go to a local file; MLFLOW_TRACKING_URI can point elsewhere, e.g. in Colab)
+    mlflow.set_tracking_uri(os.environ.get("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db"))
     mlflow.set_experiment(EXPERIMENTS[args.model])
     with mlflow.start_run(run_name=run_name):
-        mlflow.log_params({"model": args.model, "features": features.name, "manifest": manifest.name, "seed": seed, "batch_size": batch_size, "learning_rate": learning_rate, "device": DEVICE,
+        mlflow.log_params({"model": args.model, "features": features.name, "manifest": manifest.name, "seed": seed, "batch_size": batch_size, "learning_rate": learning_rate, "device": DEVICE, "torch_version": torch.__version__,
                            "max_epochs": MAX_EPOCHS, "patience": PATIENCE, "n_train": len(y_train), "n_val": len(y_val),
                            "n_params": sum(p.numel() for p in model.parameters())})
         train_dataset = mlflow.data.from_numpy(X_train, targets=y_train, name=features.stem)
