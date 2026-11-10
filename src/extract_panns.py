@@ -1,24 +1,28 @@
 """Compute a PANNs Cnn14 embedding for every clip in the manifest.
 Cnn14 is used frozen, as a feature extractor: each 2 s segment becomes a vector of 2048 values.
-Saves data/processed/panns_cnn14_v1.npz with: X, clip_id, offset_s, mean, std.
-Run from the repo root: python src/extract_panns.py
+Saves data/processed/panns_cnn14_<version>.npz with: X, clip_id, offset_s, mean, std.
+Run from the repo root: python src/extract_panns.py --manifest data/splits/manifest_v2.csv
 """
-import csv
+import argparse
 from pathlib import Path
 
 import librosa
 import numpy as np
 from panns_inference import AudioTagging
 
-from make_logmel import MANIFEST, SAMPLE_RATE, loudest_segment
+from make_logmel import MANIFEST, OUT_DIR, SAMPLE_RATE, loudest_segment, read_manifest
 
 
-OUT_FILE = Path("data/processed/panns_cnn14_v1.npz")
+def parse_args():
+    """Read the manifest from the command line."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--manifest", type=Path, default=MANIFEST)
+    return parser.parse_args()
 
 
 def main():
-    with open(MANIFEST, newline="", encoding="utf-8") as f:
-        rows = list(csv.DictReader(f))
+    rows, version = read_manifest(parse_args().manifest)
+    out_file = OUT_DIR / f"panns_cnn14_{version}.npz"
 
     # Uses the GPU if there is one, otherwise the CPU. Downloads the checkpoint (~300 MB) to ~/panns_data the first time
     cnn14 = AudioTagging(device="cuda")
@@ -36,10 +40,10 @@ def main():
     is_train = np.array([row["split"] == "train" for row in rows])
     mean, std = float(X[is_train].mean()), float(X[is_train].std())
 
-    OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    np.savez(OUT_FILE, X=X, clip_id=np.array([row["clip_id"] for row in rows]),
+    out_file.parent.mkdir(parents=True, exist_ok=True)
+    np.savez(out_file, X=X, clip_id=np.array([row["clip_id"] for row in rows]),
              offset_s=np.array(offsets, dtype=np.float32), mean=mean, std=std)
-    print(f"{OUT_FILE}: X{X.shape}, {X.min():.2f}..{X.max():.2f}, train mean={mean:.3f} std={std:.3f}")
+    print(f"{out_file}: X{X.shape}, {X.min():.2f}..{X.max():.2f}, train mean={mean:.3f} std={std:.3f}")
 
 
 if __name__ == "__main__":

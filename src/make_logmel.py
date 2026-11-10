@@ -1,6 +1,6 @@
 """Compute a log-Mel spectrogram for every clip in the manifest.
-Saves data/processed/logmel_win<n_fft>_v1.npz with: X, clip_id, offset_s, mean, std, n_fft.
-Run from the repo root: python src/make_logmel.py --n-fft 1024
+Saves data/processed/logmel_win<n_fft>_<version>.npz with: X, clip_id, offset_s, mean, std, n_fft.
+Run from the repo root: python src/make_logmel.py --n-fft 1024 --manifest data/splits/manifest_v2.csv
 """
 import argparse
 import csv
@@ -22,10 +22,18 @@ MIN_POWER = 1e-8    # -80 dB
 
 
 def parse_args():
-    """Read the window length (n_fft) from the command line."""
+    """Read the window length (n_fft) and the manifest from the command line."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--n-fft", type=int, default=1024, help="window length in samples: 512, 1024 (PANNs) or 2048")
+    parser.add_argument("--manifest", type=Path, default=MANIFEST)
     return parser.parse_args()
+
+
+def read_manifest(manifest):
+    """Rows of the manifest and its version ('manifest_v2.csv' -> 'v2'), which goes in the name of the output file."""
+    with open(manifest, newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    return rows, manifest.stem.removeprefix("manifest_")
 
 
 def loudest_segment(waveform):
@@ -45,11 +53,10 @@ def logmel(waveform, n_fft):
 
 
 def main():
-    n_fft = parse_args().n_fft
-    out_file = OUT_DIR / f"logmel_win{n_fft}_v1.npz"
-
-    with open(MANIFEST, newline="", encoding="utf-8") as f:
-        rows = list(csv.DictReader(f))
+    args = parse_args()
+    n_fft = args.n_fft
+    rows, version = read_manifest(args.manifest)
+    out_file = OUT_DIR / f"logmel_win{n_fft}_{version}.npz"
 
     spectrograms, offsets = [], []
     for row in rows:

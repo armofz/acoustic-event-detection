@@ -1,14 +1,14 @@
 """Compute a constant-Q transform (CQT) for every clip in the manifest, to compare it with the log-Mel.
-Saves data/processed/cqt_v1.npz with: X, clip_id, offset_s, mean, std.
-Run from the repo root: python src/make_cqt.py
+Saves data/processed/cqt_<version>.npz with: X, clip_id, offset_s, mean, std.
+Run from the repo root: python src/make_cqt.py --manifest data/splits/manifest_v2.csv
 """
-import csv
+import argparse
+from pathlib import Path
 import librosa
 import numpy as np
-from make_logmel import MANIFEST, MEL, MIN_POWER, OUT_DIR, SAMPLE_RATE, loudest_segment
+from make_logmel import MANIFEST, MEL, MIN_POWER, OUT_DIR, SAMPLE_RATE, loudest_segment, read_manifest
 
 
-OUT_FILE = OUT_DIR / "cqt_v1.npz"
 CQT = dict(hop_length=MEL["hop_length"], fmin=MEL["fmin"], n_bins=64, bins_per_octave=8)
 
 
@@ -18,9 +18,16 @@ def cqt(waveform):
     return librosa.power_to_db(power, ref=1.0, amin=MIN_POWER, top_db=None).astype(np.float32)
 
 
+def parse_args():
+    """Read the manifest from the command line."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--manifest", type=Path, default=MANIFEST)
+    return parser.parse_args()
+
+
 def main():
-    with open(MANIFEST, newline="", encoding="utf-8") as f:
-        rows = list(csv.DictReader(f))
+    rows, version = read_manifest(parse_args().manifest)
+    out_file = OUT_DIR / f"cqt_{version}.npz"
 
     spectrograms, offsets = [], []
     for row in rows:
@@ -33,10 +40,9 @@ def main():
     is_train = np.array([row["split"] == "train" for row in rows])
     mean, std = float(X[is_train].mean()), float(X[is_train].std())
 
-    OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    np.savez(OUT_FILE, X=X, clip_id=np.array([row["clip_id"] for row in rows]), 
-             offset_s=np.array(offsets, dtype=np.float32), mean=mean, std=std)
-    print(f"{OUT_FILE}: X{X.shape}, {X.min():.1f}..{X.max():.1f} dB, train mean={mean:.2f} std={std:.2f}")
+    out_file.parent.mkdir(parents=True, exist_ok=True)
+    np.savez(out_file, X=X, clip_id=np.array([row["clip_id"] for row in rows]), offset_s=np.array(offsets, dtype=np.float32), mean=mean, std=std)
+    print(f"{out_file}: X{X.shape}, {X.min():.1f}..{X.max():.1f} dB, train mean={mean:.2f} std={std:.2f}")
 
 
 if __name__ == "__main__":
