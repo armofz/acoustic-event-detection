@@ -21,3 +21,4 @@ mlruns/
 
 # Models
 models/
+*.log
