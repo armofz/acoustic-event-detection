@@ -106,8 +106,10 @@ def find_rule(labels, rules, excluded_labels, alert_classes):
     return None
 
 
-def load_fsd50k(uploader, skip_ids, rng, rules, excluded_labels=frozenset(), alert_classes=frozenset()):
-    """Load FSD50K clips of the labels in rules, and how many were skipped as duplicates"""
+def load_fsd50k(uploader, skip_ids, rng, rules, excluded_labels=frozenset(), alert_classes=frozenset(),
+                dropped_labels=frozenset()):
+    """Load FSD50K clips of the labels in rules, and how many were skipped as duplicates.
+    Clips with any of dropped_labels are not used in any class"""
     with open(FSD_GT / "vocabulary.csv", newline="", encoding="utf-8") as f:
         label_to_mid = {label: mid for _, label, mid in csv.reader(f)}
     ratings = read_json(FSD_META / "pp_pnp_ratings_FSD50K.json")
@@ -118,7 +120,7 @@ def load_fsd50k(uploader, skip_ids, rng, rules, excluded_labels=frozenset(), ale
         for r in read_rows(FSD_GT / f"{part}.csv"):
             labels = r["labels"].split(",")
             rule = find_rule(labels, rules, excluded_labels, alert_classes)
-            if rule is None:
+            if rule is None or not dropped_labels.isdisjoint(labels):
                 continue
             freesound_id = r["fname"]
             if freesound_id in skip_ids:    # same recording is already in ESC-50
