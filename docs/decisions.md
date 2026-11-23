@@ -7,6 +7,8 @@ Five classes will be used, taken from ESC-50 and FSD50K:
 - **'glass_breaking'**: glass breaking
 - **'siren'**: emergency services siren
 
+In dataset v2, 'phone' is removed and new classes are added (see Dataset v2)
+
 ## Problems and solutions
 
 | Reason | Description | Solution |
@@ -58,3 +60,41 @@ Every model is trained with seeds 1, 2 and 3 and compared by the mean macro F1 o
 | Frozen Cnn14 + linear layer | PANNs embeddings | 0.866 | 0.858 | 0.867 | 0.864 |
 
 The difference between the representations (means from 0.676 to 0.715) is smaller than the variation between seeds of the same representation, so there is no clear winner. The log-Mel with window 1024 is kept as the input because it is the PANNs setting. Regarding the model, the frozen Cnn14 improves the CNN by 0.165 and varies much less between seeds.
+
+
+# Dataset v2 (10.11.26)
+
+The models of v1 always choose one of their classes, even with silence or normal home sounds (with silence they say 'phone'), so in a real home they would raise false alarms. Version 2 adds the sounds that should not alert.
+
+The dataset has 1920 clips in 17 classes (619 from ESC-50 and 1301 from FSD50K). It uses the same steps and split as v1 (70/15/15, uploaders never in two splits), only the classes and rules change. The 'class' column is the class the model learns, and 'subclass' keeps the original sound, so the classes can be regrouped later without rebuilding the dataset. The detector decides which classes alert, and the user can change it in the app.
+
+Alert classes (they alert by default, 160 clips each):
+- **'alarm'**: generic alarm
+- **'siren'**: emergency services siren
+- **'glass_breaking'**: glass breaking
+- **'door_knock_bell'**: door knock or doorbell
+
+Classes that can be activated (they do not alert by default, 160 clips each):
+- **'door_slam'**: door slam
+- **'crying'**: baby or adult crying
+- **'scream_shout'**: scream, shout or yell
+
+Home sounds (they never alert, 80 clips each):
+- **'speech'**: speech or laughter
+- **'cough_sneeze'**: cough or sneeze
+- **'music'**: music or singing
+- **'clinks'**: dishes, cutlery or coins
+- **'water_cooking'**: tap or sink, dripping, toilet flush, frying or boiling
+- **'appliances'**: vacuum cleaner, washing machine, fan, printer or microwave
+- **'typing_paper'**: typing, writing, paper or zipper
+- **'pets'**: dog or cat
+- **'footsteps_furniture'**: footsteps, drawers and cupboards, or door creak
+- **'outdoors'**: rain, wind or traffic
+
+| Reason | Description | Solution |
+| --- | --- | --- |
+| Home sounds | ESC-50 and FSD50K have many more labels than the ones needed | Cover the frequent sounds of a home that should not alert. Body sounds, construction and outdoor engines are left out |
+| Sounds that may alert in the future | Training door slams, crying or screams as 'other' would teach the model to ignore them | Train them as their own classes that do not alert by default, so they can be activated later |
+| Clips close to an alert class | Clinking glasses, ringtones, bells, beeps, explosions or ticking clocks would teach the model to ignore sounds that are almost alerts | FSD50K clips with any of these labels only go to the alert classes |
+| Clips with several labels | A clip can have 'Cough' and 'Speech', or 'Singing' and 'Music' | The most specific label wins |
+| 'phone' removed | FSD50K 'Telephone' mixes rings, dial tones and keypad beeps, ESC-50 has no phone class, and in a first version of v2 'phone' sent multitude of false positives. Besides, a mobile phone already notifies an user when it rings | Remove the class |
